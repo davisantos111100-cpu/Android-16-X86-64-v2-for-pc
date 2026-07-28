@@ -15,7 +15,7 @@ on:
 jobs:
   build-iso:
     name: Build ISO (self-hosted runner required)
-    runs-on: [self-hosted, aosp-builder]
+    runs-on: ubuntu-latest
     env:
       # Map secrets into job env so they can be used in "if" expressions safely
       SCP_USER: ${{ secrets.SCP_USER }}
