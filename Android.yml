@@ -1,0 +1,80 @@
+name: Auto Build Android ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_branch:
+        description: 'AOSP manifest branch (ex: android-16.0.0_rX)'
+        required: true
+        default: 'android-16.0.0_rX'
+      device_product:
+        description: 'Device product (ex: aosp_x86_64)'
+        required: true
+        default: 'aosp_x86_64'
+
+jobs:
+  build-iso:
+    name: Build ISO (self-hosted runner required)
+    runs-on: [self-hosted, aosp-builder]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install repo tool (if needed)
+        run: |
+          mkdir -p ~/bin
+          if [ ! -x ~/bin/repo ]; then
+            curl -sS https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+            chmod +x ~/bin/repo
+          fi
+          echo "${HOME}/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies (minimal set)
+        run: sudo apt update && sudo apt install -y \
+          curl openjdk-17-jdk xorriso grub-pc-bin grub-efi-amd64-bin mtools \
+          abootimg simg2img qemu-system-x86 build-essential zip zlib1g-dev \
+          gcc-multilib g++-multilib libc6-dev-i386 libncurses5 bc bison flex \
+          libssl-dev libxml2-utils xsltproc u-boot-tools liblz4-tool rsync
+
+      - name: Make scripts executable
+        run: chmod +x scripts/*.sh || true
+
+      - name: Run auto build (vai demorar muito)
+        env:
+          MANIFEST_BRANCH: ${{ github.event.inputs.manifest_branch }}
+          DEVICE_PRODUCT: ${{ github.event.inputs.device_product }}
+          JOBS: ${{ env.JOBS }}
+        run: |
+          # Opcional: ajuste JOBS se quiser
+          export JOBS=${JOBS:-$(nproc)}
+          # Checa existência do orquestrador
+          if [ ! -f ./scripts/auto_build_iso.sh ]; then
+            echo "scripts/auto_build_iso.sh não encontrado. Verifique que adicionou os scripts ao repo."
+            exit 1
+          fi
+          sudo ./scripts/auto_build_iso.sh
+
+      - name: Upload ISO artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android16-x86_64-iso
+          path: out/iso/
+
+      - name: (Opcional) Upload ISO via SCP se secrets estiverem configurados
+        if: ${{ secrets.SCP_HOST != '' }}
+        env:
+          SCP_USER: ${{ secrets.SCP_USER }}
+          SCP_HOST: ${{ secrets.SCP_HOST }}
+          SCP_PATH: ${{ secrets.SCP_PATH }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -e
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          # envia todo o diretório out/iso para o destino
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa" out/iso/ "${SCP_USER}@${SCP_HOST}:${SCP_PATH}"
