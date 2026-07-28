@@ -16,6 +16,12 @@ jobs:
   build-iso:
     name: Build ISO (self-hosted runner required)
     runs-on: [self-hosted, aosp-builder]
+    env:
+      # Map secrets into job env so they can be used in "if" expressions safely
+      SCP_USER: ${{ secrets.SCP_USER }}
+      SCP_HOST: ${{ secrets.SCP_HOST }}
+      SCP_PATH: ${{ secrets.SCP_PATH }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
 
     steps:
       - name: Checkout repository
@@ -65,12 +71,7 @@ jobs:
           path: out/iso/
 
       - name: (Opcional) Upload ISO via SCP se secrets estiverem configurados
-        if: ${{ secrets.SCP_HOST != '' }}
-        env:
-          SCP_USER: ${{ secrets.SCP_USER }}
-          SCP_HOST: ${{ secrets.SCP_HOST }}
-          SCP_PATH: ${{ secrets.SCP_PATH }}
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        if: ${{ env.SCP_HOST != '' }}
         run: |
           set -e
           mkdir -p ~/.ssh
